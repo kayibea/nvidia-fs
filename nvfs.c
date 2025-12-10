@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 500
 #define FUSE_USE_VERSION 31
 #include <errno.h>
 #include <fuse3/fuse.h>
@@ -9,11 +10,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define PATH_VRAM "/vram"
 #define PATH_UTIL "/util"
 #define PATH_TEMP "/temp"
+#define POLL_INTERVAL 5
 
 static struct {
   char vram[8];
@@ -22,11 +25,16 @@ static struct {
 } gpu;
 
 static nvmlDevice_t dev;
+static nvmlReturn_t nvml_errno;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static struct fuse *fuse_instance = NULL;
 
 static void *collector_thread(void *arg) {
   (void)arg;
+
+  struct timespec ts;
+  ts.tv_sec = POLL_INTERVAL;
+  ts.tv_nsec = 0;
 
   nvmlMemory_t mem;
   nvmlUtilization_t util;
@@ -44,7 +52,7 @@ static void *collector_thread(void *arg) {
     snprintf(gpu.temp, sizeof(gpu.temp), "%u", temp);
     pthread_mutex_unlock(&lock);
 
-    usleep(5000 * 1000);
+    nanosleep(&ts, NULL);
   }
 
   return NULL;
@@ -153,13 +161,13 @@ int main(int argc, char **argv) {
   sigaction(SIGINT, &sa, NULL);
   sigaction(SIGTERM, &sa, NULL);
 
-  if (nvmlInit() != NVML_SUCCESS) {
-    fprintf(stderr, "NVML init failed\n");
+  if ((nvml_errno = nvmlInit()) != NVML_SUCCESS) {
+    fprintf(stderr, "NVML init failed: %s\n", nvmlErrorString(nvml_errno));
     return 1;
   }
 
-  if (nvmlDeviceGetHandleByIndex(0, &dev) != NVML_SUCCESS) {
-    fprintf(stderr, "Failed to get device\n");
+  if ((nvml_errno = nvmlDeviceGetHandleByIndex(0, &dev)) != NVML_SUCCESS) {
+    fprintf(stderr, "Failed to get device: %s\n", nvmlErrorString(nvml_errno));
     return 1;
   }
 
@@ -189,8 +197,8 @@ int main(int argc, char **argv) {
   fuse_opt_free_args(&args);
   free(opts.mountpoint);
 
-  if (nvmlShutdown() != NVML_SUCCESS) {
-    fprintf(stderr, "NVML Shutdown failed\n");
+  if ((nvml_errno = nvmlShutdown()) != NVML_SUCCESS) {
+    fprintf(stderr, "NVML Shutdown failed: %s\n", nvmlErrorString(nvml_errno));
     return 1;
   }
 
