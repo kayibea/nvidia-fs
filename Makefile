@@ -2,7 +2,7 @@ CC = cc
 CFLAGS = -std=c99 -pedantic -Wall -Wextra -Werror -O2
 LDFLAGS = -lnvidia-ml -lfuse3
 
-SRC = nvfs.c
+SRC = main.c
 BIN = nvfs
 SERVICE = nvidia-fs.service
 
